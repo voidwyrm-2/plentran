@@ -1,0 +1,42 @@
+#program CounterTest
+
+;; create new variable called 'counter'
+define counter
+
+;; assign 10 to 'counter'
+assign counter with 10
+
+;; print 'counter' to console
+send counter to @OUT
+
+;; increment 'counter'
+assign counter with counter + 1
+
+;; print updated 'counter' to console
+send counter to @OUT
+
+#endprogram CounterTest
+
+
+
+#program StringConcateTest
+
+define testString as "Hello, "
+
+send testString to @OUT
+
+assign testString with testString + "Catdog!"
+
+send testString to @OUT
+
+#endprogram StringConcateTest
+
+
+
+#program RemoveVars
+
+delete counter
+
+delete testString
+
+#endprogram RemoveVars

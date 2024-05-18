@@ -1,0 +1,15 @@
+;; you can encapsulate parts of code(or the entire file) in a program
+;; you can do this to any part of the code and you can nest programs inside of programs
+;; or you can just not use any programs
+
+;; wrap the code in the program 'HelloWorld'
+#program HelloWorld
+
+;; create variable 'x' with a string value
+;; you can also omit the immediate assignment and leave the variable to be assigned later
+define x as "Hello, Catdog!"
+
+;; print variable 'x' to console
+send x to @OUT
+
+#endprogram HelloWorld

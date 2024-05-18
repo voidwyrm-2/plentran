@@ -1,0 +1,21 @@
+;; basic Plentran thing
+
+#program Basic
+
+;; create variable 'x' with a string value
+;; you can also omit the immediate assignment and leave the variable to be assigned later
+define x as "Hello, Catdog!"
+
+;; print variable 'x' to console
+send x to @OUT
+
+;; get new value from user
+assign x with @IN
+
+;; print variable 'x' to console
+send x to @OUT
+
+;; remove x entirely
+delete x
+
+#endprogram Basic

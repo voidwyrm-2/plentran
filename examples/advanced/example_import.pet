@@ -1,0 +1,5 @@
+use f#./example_lib.pet
+
+define x as publicVarTest_1 + publicVarTest_2
+
+send x to @OUT

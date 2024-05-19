@@ -1,0 +1,27 @@
+;; a test for if statements in Plentran
+
+
+#program IfStatementTest
+
+;; create new variable 'userInput' and initialize it with the user's input
+define userInput as @IN
+
+
+;; check if the given input is "rickroll"
+if userInput == "rickroll" then
+
+;; if it is, print the funny to the console
+send "never gonna give you up" to @OUT
+
+
+else do
+;; otherwise, print the user input to the console
+
+define ui_res as "you said '" + userInput
+assign ui_res with ui_res + "'"
+
+send ui_res to @OUT
+
+endif
+
+#endprogram IfStatementTest

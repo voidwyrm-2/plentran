@@ -1,0 +1,7 @@
+linked f#./example_lib.ph
+;; 'f#' tells the interpreter that the value is a file path
+;; you could also just use a string(if your path has spaces in it, you HAVE to use one)
+
+define publicVarTest_1 as "Hello, "
+
+define publicVarTest_2 as "Catdog!"

@@ -1,0 +1,24 @@
+;; while loop test
+
+#program WhileLoopTest
+
+;; create iterator variable
+define i as 0
+
+;; loop
+while i < 10 do
+
+;; print 'i' to console
+send i to @OUT
+
+;; increment i
+assign i with i + 1
+
+endwhile
+
+
+;; make sure we've broken out of the loop
+send "loop ended" to @OUT
+
+
+#endprogram WhileLoopTest

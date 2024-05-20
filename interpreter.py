@@ -353,8 +353,12 @@ def process_line(vars: dict[str, Any], funcs: dict[str, PlentranFunction], pub_v
     if_statement_cache = None
     if line.startswith('if ') and line.endswith(' then'):
         if_statement_cache = line.removeprefix('if ').removesuffix(' then')
+    
+    while_loop_cache = None
+    if line.startswith('while ') and line.endswith(' do'):
+        while_loop_cache = line.removeprefix('while ').removesuffix(' do')
 
-    if not if_statement_cache:
+    if not if_statement_cache and not while_loop_cache:
         repcode = '{' + f'{randint(0, 9)}{randint(0, 9)}{randint(0, 9)}{randint(0, 9)}{randint(0, 9)}' + '}'
         # get all starts and ends of all strings in the line
         spos = []
@@ -380,9 +384,11 @@ def process_line(vars: dict[str, Any], funcs: dict[str, PlentranFunction], pub_v
 
     if if_statement_cache:
         l = ['if', if_statement_cache, 'then']
+    elif while_loop_cache:
+        l = ['while', while_loop_cache, 'do']
     else: l = line.split(' ') # split line by spaces
 
-    if not if_statement_cache:
+    if not if_statement_cache and not while_loop_cache:
         # re-add strings to split line
         idx = 0
         for i, il in enumerate(l):
@@ -444,6 +450,12 @@ def process_line(vars: dict[str, Any], funcs: dict[str, PlentranFunction], pub_v
             if if_res: return '', 3, None
             return '', 2, None
             #valid = True
+        
+        case ('while', statement, 'do'):
+            while_res, err = process_if(vars, while_loop_cache, ln, cprog)
+            if err: return '', 0, err
+            if while_res: return '', 0, None
+            return '', 4, None
 
         #case ('createf', filename):
         #    err = delete_var(vars, l[1])
@@ -489,28 +501,43 @@ def run_pet(text: str, is_function: bool = False, is_imported: bool = False, mai
     if_to_endif = {}
     else_to_endif = {}
 
-    # get if-else-endif positions
+    while_to_endwhile = {}
+    breakwhile_to_endwhile = {}
+    endwhile_to_while = {}
+
+    # get if-else-endif and while-endwhile positions
     else_index_stack: list[int] = []
     if_index_stack: list[list[int, bool]] = []
+
+    while_index_stack: list[int] = []
+    breakwhile_index_stack: list[int] = []
+
     for ln, l in enumerate(lines):
         if l.startswith('if ') and l.endswith(' then'):
             if_index_stack.append([ln, False])
         elif l == 'else do':
             else_index_stack.append(ln)
             if_index_stack[-1][1] = True
-        elif l == 'endif' and len(if_index_stack) > 0:
+        elif l == 'endif' and len(if_index_stack):
             if_idx, has_else = if_index_stack.pop()
             if_to_endif[if_idx] = ln
             if has_else:
                 else_idx = else_index_stack.pop()
                 if_to_else[if_idx] = else_idx
                 else_to_endif[else_idx] = ln
+        elif l.startswith('while ') and l.endswith(' do'):
+            while_index_stack.append(ln)
+        elif l == 'breakwhile' and len(while_index_stack): pass
+        elif l == 'endwhile' and len(while_index_stack):
+            while_idx = while_index_stack.pop()
+            while_to_endwhile[while_idx] = ln
+            endwhile_to_while[ln] = while_idx
 
 
     all_programs = [main_program_name]
 
     programs = [main_program_name]
-
+ 
     public_vars_set: set[str] = set()
 
     vars: dict[str, Any] = injected_vars if injected_vars else {}
@@ -520,8 +547,12 @@ def run_pet(text: str, is_function: bool = False, is_imported: bool = False, mai
     #collect_lines = False
     #collected_lines = []
 
+    # if statement booleans
     should_jump_to_endif_from_else = False
     ignore_next_endif = False
+
+    # while loop booleans
+    jump_back_to_while_from_endwhile = True
 
     to_be_returned: Nil | Error | Any = Nil()
 
@@ -532,33 +563,52 @@ def run_pet(text: str, is_function: bool = False, is_imported: bool = False, mai
         l = lines[ln]
         #print(ln, l)
         if l == '' or l.startswith(';;'): ln += 1; continue
+
         if l == 'endif' and ignore_next_endif: ignore_next_endif = False; ln += 1; continue
+
         if l == 'else do' and should_jump_to_endif_from_else:
-            if ln not in list(else_to_endif): print(Error('IfStatementError', f"could not index else-do", ln, programs[-1]).error()); return
+            if ln not in list(else_to_endif): print(Error('IfStatementError', f"could not index of 'else->end'", ln, programs[-1]).error()); return
             should_jump_to_endif_from_else = False
             ln = else_to_endif[ln] + 1; continue
-        progname, exitcode, err = process_line(vars, funcs, public_vars_set, l, ln+1, programs[-1], all_programs)
+        
+        if l == 'endwhile' and jump_back_to_while_from_endwhile: ln = endwhile_to_while[ln]; continue
+
+        common_line_output, exitcode, err = process_line(vars, funcs, public_vars_set, l, ln+1, programs[-1], all_programs)
         if err: print(err.error()); return
+
         if exitcode == 1:
-            programs.append(progname)
-            all_programs.append(progname)
+            programs.append(common_line_output)
+            all_programs.append(common_line_output)
+
         elif exitcode == -1: programs.pop()
+
         elif exitcode == 2:
             if ln not in list(if_to_else):
-                if ln not in list(if_to_endif): print(Error('IfStatementError', f"could not index if-then", ln, programs[-1]).error()); return
+                if ln not in list(if_to_endif): print(Error('IfStatementError', f"could not index 'if->else' nor 'if->endif'", ln, programs[-1]).error()); return
                 else: ln = if_to_endif[ln]
             else: ln = if_to_else[ln]; ignore_next_endif = True
+
         elif exitcode == 3:
             if ln in list(if_to_else): should_jump_to_endif_from_else = True
             else: ignore_next_endif = True
+
+        elif exitcode == 4:
+            if ln not in list(while_to_endwhile): print(Error('WhileLoopError', f"could not index 'while->endwhile'", ln, programs[-1]).error()); return
+            ln = while_to_endwhile[ln]
+
         elif exitcode != 0: print(Error('InterpreterError', f"program exit code should be in range -1 to 2(inclusive), but it was '{exitcode}' instead", ln, programs[-1]).error()); return
+        
         ln += 1
-    # exit codes:
+
+    ### exit codes ###
     # * -1: pop latest program
     # * 0: do nothing
     # * 1: push new program
     # * 2: jump to 'else' from 'if'
     # * 3: jump to 'endif' from 'else'
+    # * 4: jump to 'endwhile' from 'while'
+    # * 5: get 
+    ##################
 
     if is_function:
         return to_be_returned

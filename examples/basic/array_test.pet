@@ -1,0 +1,14 @@
+#program ArrayTest
+
+;; create variable 'x'
+define x
+
+;; assign new non-typed array to 'x'
+assign x with @ARRAY:10
+
+setindex x:0 as "Hello, Catdog!"
+
+;; print variable 'x' to console
+send x to @OUT
+
+#endprogram ArrayTest

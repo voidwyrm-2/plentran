@@ -1,16 +1,19 @@
 import enum
-from typing import Any
+import sys
+from typing import Any, SupportsIndex, Type
 from pathlib import Path
 from random import randint
-
 
 
 ####### CONTROL TAGS #######
 # "@IN": user input
 # "@OUT": stdout
 # "@FILE": the current file
-# "@RUN": used before a function identifier to call that function
-# "@RAND[min]:[max]": gives a random number between 'min' and 'max'
+# "@RUN:[function]": used before a function identifier to call that function
+# "@RAND:[min]:[max]": returns a random number between 'min' and 'max'
+# "@LIST": creates a new linked list
+# "@ARRAY:[length]:[type?]: creates a new array with the given length and an optional type constraint"
+# "@LEN:[variable/object]": returns the length of the given variable/object/etc
 ############################
 
 
@@ -64,6 +67,7 @@ class Error:
         return out
 
 
+
 class PlentranFunction:
     def __init__(self, name: str, code: list[str]):
         self.__name = name
@@ -72,12 +76,101 @@ class PlentranFunction:
     def run(self): return run_pet(self.__code, is_function=True)
 
 
+
+class Array:
+    
+    '''
+    A statically sized array that can optionally have a type constraint
+    '''
+    class __NoType:
+        def __repr__(self): return 'NoType'
+    def __init__(self, size: int = None, typeof: Type = __NoType, *inital_values: Any):
+        if size: self.__size: int = size
+        else:
+            if inital_values: self.__arr = list(inital_values); self.__size: int = len(self.__arr)
+            else: self.__size: int = 10
+        self.__typeof = typeof
+        self.__arr: list[Any] = [self.__typeof() for _ in range(self.__size)]
+    
+    def len(self):
+        'Returns the amount of currently assigned indexes'
+        return len(self.__arr)
+
+    def size(self):
+        'Returns the maximum size of the array'
+        return self.__size
+
+    def index(self, value: Any, start: SupportsIndex = 0, stop: SupportsIndex = sys.maxsize):
+        'Return first index of value.\n\nRaises ValueError if the value is not present.'
+        return self.__arr.index(value, start, stop)
+    
+    def get(self, index: int):
+        'Return item at given index.\n\nRaises IndexError if the index is out of bounds.\n\nIf the item at index is not assigned and the array has a type constraint,\n\nthen the zero value of that type is returned;\n\notherwise raises IndexError.'
+        if index > self.__size: raise IndexError(f"{index} is outside the bounds of the array")
+        if index > len(self.__arr):
+            if self.__typeof != self.__NoType: return self.__typeof()
+            else: raise IndexError(f"{index} is outside the bounds of the assigned indexes")
+        return self.__arr[index]
+    
+    def set(self, index: int, value: Any):
+        '''Set item at given index.\n
+        Raises IndexError if the index is out of bounds.\n
+        If the item at index is not assigned and the array has a type constraint,\n
+        then the zero value of that type is returned;\n
+        otherwise raises IndexError.\n
+        If the array has a type constraint and the given value isn't of that type, raises ValueError'''
+        if index > self.__size: raise IndexError(f"{index} is outside the bounds of the array")
+        if index > len(self.__arr):
+            if self.__typeof != self.__NoType: return self.__typeof()
+            else: raise IndexError(f"{index} is outside the bounds of the assigned indexes")
+        if self.__typeof != self.__NoType and not isinstance(value, self.__typeof):
+            raise ValueError(f"can not assign type of '{type(value).__name__}' to an array with a type constraint of '{self.__typeof.__name__}'")
+        self.__arr[index] = value
+    
+    def copy(self, new_arr_size: int = None, new_array_type_constraint: Type = __NoType):
+        '''
+        Returns a shallow copy of the array.\n
+        If `new_array_type_constraint` is `None`, then it uses the old array's type constraint.
+        '''
+        if new_arr_size == None: new_arr_size = self.__size
+        if not new_array_type_constraint: new_array_type_constraint = self.__typeof
+        return Array(new_arr_size, new_array_type_constraint, *self.__arr)
+
+    def __repr__(self):
+        arr = []
+        for i in self.__arr:
+            if isinstance(i, self.__NoType): arr.append('[NoType]')
+            else: arr.append(f"{type(i).__name__}({i})")
+        out = ', '.join(arr)
+        if self.__typeof != self.__NoType: out += f'({self.__typeof.__name__})'
+        out = f'Array({self.__size})[' + out + ']'
+        return out
+
+
+class Stack:
+    def __init__(self, *initial_values: Any) -> None:
+        self.__stack = []
+        #self.__size = size # , size: int = -1
+        if len(initial_values): self.__stack = list(initial_values)
+    
+    def pop(self):
+        if not len(self.__stack): raise IndexError('Can not pop value as stack is empty')
+        return self.__stack.pop()
+
+    def push(self, value: Any): self.__stack.append(value)
+
+    def peek(self):
+        if not len(self.__stack): raise IndexError('Can not pop value as stack is empty')
+        return self.__stack[-1]
+
+
+
 class Nil:
     def __repr__(self): return 'Nil'
 
-    def __eq__(self, value: object) -> bool: return False == value
+    def __eq__(self, value: object) -> bool: return None == value
 
-    def __ne__(self, value: object) -> bool: return False != value
+    def __ne__(self, value: object) -> bool: return None != value
 
 #### END CLASSES ####
 
@@ -85,14 +178,25 @@ class Nil:
 
 #### GETTERS ####
 
-def get_control_tag(vars: dict[str, Any], tag: str, ln: int, program: str) -> tuple[Any, Error | None]:
-    match tag:
-        case '@IN': return input('input wanted\n'), None
-        case '@FILE': return __file__, None
+def get_control_tag(vars: dict[str, Any], funcs: dict[str, PlentranFunction], tag: str, ln: int, program: str) -> tuple[Any, Error | None]:
 
-    # extra cases
-    if tag.startswith('@RAND') and ':' in tag:
-        r_min, r_max = tag.removeprefix('@RAND').split(':')
+    if tag == '@IN': return input('input wanted\n'), None
+
+    if tag == '@FILE': return __file__, None
+
+    if tag == '@LIST': return [], None
+
+    if tag.startswith('@LEN:'):
+        o = tag.removeprefix('@LEN:')
+        o_converted, o_err = get_value(vars, o, ln, program)
+        if o_err: return None, o_err
+        try:
+            return len(o_converted), None
+        except TypeError:
+            return None, Error('InvalidValueError', f"invalid value '{o_converted}' for control tag 'LEN'", ln, program)
+
+    if tag.startswith('@RAND:') and tag.count(':') == 2:
+        r_min, r_max = tag.removeprefix('@RAND:').split(':')
 
         min_converted, min_err = get_value(vars, r_min, ln, program)
         if min_err: return None, min_err
@@ -106,6 +210,15 @@ def get_control_tag(vars: dict[str, Any], tag: str, ln: int, program: str) -> tu
         if min_converted > max_converted: return None, Error('InvalidValueError', f"minimum range cannot be greater than maximum range", ln, program)
 
         return randint(min_converted, max_converted), None
+    
+    if tag.startswith('@ARRAY:'): pass
+
+    if tag.startswith('@RUN:'):
+        funcname = tag.removeprefix('@RUN:').strip()
+        if funcname not in list(funcs):
+            return None, Error('UnknownFunctionError', f"unknown function '{funcname}'", ln, program)
+        funcs[funcname].run()
+        
 
     return None, Error('InvalidControlTagError', f"invalid control tag '{tag}'", ln, program)
 
@@ -118,9 +231,9 @@ def get_value(vars: dict[str, Any], value: str, ln: int, program: str) -> tuple[
         if '.' in value: return float(value), None
         return int(value), None
     
-    elif value == 'false': return False
+    elif value == 'false': return False, None
 
-    elif value == 'true': return True
+    elif value == 'true': return True, None
     
     elif value == '~': return Nil(), None
 
@@ -627,3 +740,15 @@ def load_plentran_header(filepath: str, ln: int, program: str) -> tuple[set[str]
 
 
 #### END PLENTRAN HEADER STUFF ####
+
+
+
+
+test_array = Array(10)
+
+print(test_array)
+
+test_array.set(0, '*')
+test_array.set(1, '<<<<->>>>')
+
+print(test_array)
